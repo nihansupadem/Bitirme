@@ -1,0 +1,21 @@
+# Core ML & data
+numpy
+pandas
+scikit-learn
+tensorflow-cpu; sys_platform == 'linux'    # lighter on HF Spaces (linux)
+tensorflow; sys_platform != 'linux'        # full tensorflow on macOS/Windows
+
+# Finance data
+yfinance
+requests
+curl_cffi
+
+# Models
+hmmlearn
+
+# Plotting
+matplotlib
+Pillow                # for Gradio image handling
+
+# Web UI
+gradio>=4.44.0
