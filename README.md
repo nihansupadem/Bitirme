@@ -1,8 +1,8 @@
 ---
-title: OpTrade BIST30 Financial Forecasting
-emoji: 📈
-colorFrom: blue
-colorTo: purple
+title: OpTrade Pro — BIST30 AI Forecasting
+emoji: 🚀
+colorFrom: indigo
+colorTo: green
 sdk: gradio
 sdk_version: 6.9.0
 app_file: app.py
@@ -11,7 +11,7 @@ license: mit
 short_description: LSTM + HMM + Monte Carlo stock forecasting for BIST30
 ---
 
-# OpTrade — BIST30 AI Stock Forecasting
+# OpTrade Pro — BIST30 AI Stock Forecasting
 
 AI-powered forecasting tool for Istanbul Stock Exchange (BIST30) stocks, combining:
 - **LSTM** neural network for price prediction
