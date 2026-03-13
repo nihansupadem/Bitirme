@@ -3,9 +3,8 @@ title: OpTrade Pro — BIST30 AI Forecasting
 emoji: 🚀
 colorFrom: indigo
 colorTo: green
-sdk: gradio
-sdk_version: 6.9.0
-app_file: app.py
+sdk: docker
+app_port: 7860
 pinned: false
 license: mit
 short_description: LSTM + HMM + Monte Carlo stock forecasting for BIST30
@@ -26,6 +25,7 @@ AI-powered forecasting tool for Istanbul Stock Exchange (BIST30) stocks, combini
 - Key trading levels: Entry Zone, Price Target, Stop Loss
 - Plain-English explanations for beginners
 - 3 interactive charts with dark theme
+- User accounts with tracked stock alerts
 
 ## ⚠️ Disclaimer
 This is an educational AI research tool — **not financial advice**.
@@ -33,4 +33,4 @@ Predictions can be wrong. Always do your own research and consult a
 licensed financial adviser before investing real money.
 
 ## Tech Stack
-Python · TensorFlow · hmmlearn · yfinance · curl_cffi · Gradio · matplotlib · scikit-learn
+Python · TensorFlow · hmmlearn · yfinance · curl_cffi · PHP 8.1 · Apache · SQLite · matplotlib · scikit-learn

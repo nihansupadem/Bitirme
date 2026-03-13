@@ -1,0 +1,14 @@
+.git
+.gitignore
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+app.py
+DEPLOY.md
+start.sh
+backend/cache/
+backend/*.db
+backend/frontend/cache/
+node_modules/

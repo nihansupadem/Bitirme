@@ -21,7 +21,7 @@ define('SMTP_USER',  '');    // your email address
 define('SMTP_PASS',  '');    // app password (Gmail: generate in Google Account settings)
 
 // ── App ───────────────────────────────────────────────────────────────────────
-define('APP_URL',          'http://localhost:8080');  // update for production
+define('APP_URL',          'https://ibrahimaydinn-optrade-pro.hf.space');  // HuggingFace Space URL
 define('APP_NAME',         'OpTrade');
 define('ALERT_THRESHOLD',  75);    // minimum signal_strength % to trigger email
 define('SIGNAL_CACHE_MIN', 60);    // minutes before a signal is considered stale
