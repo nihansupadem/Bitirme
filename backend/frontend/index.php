@@ -1,3 +1,11 @@
+<?php
+require_once __DIR__ . '/db.php';
+session_start();
+$_logged_in   = !empty($_SESSION['user_id']);
+$_user_email  = $_SESSION['email'] ?? '';
+$_csrf        = $_SESSION['csrf'] ?? bin2hex(random_bytes(16));
+$_SESSION['csrf'] = $_csrf;
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -167,9 +175,29 @@ nav{position:sticky;top:0;z-index:100;display:flex;align-items:center;justify-co
     OpTrade
   </div>
   <div class="nav-links">
-    <a href="#">Dashboard</a><a href="#">Markets</a><a href="#">About</a>
+    <a href="index.php" style="color:var(--white)">Analysis</a>
+    <?php if ($_logged_in): ?>
+      <a href="dashboard.php">📊 Dashboard</a>
+    <?php endif; ?>
+    <a href="#">Markets</a>
   </div>
-  <span class="nav-badge">BIST30</span>
+  <?php if ($_logged_in): ?>
+    <div style="display:flex;align-items:center;gap:10px">
+      <span style="color:var(--muted2);font-size:.8rem">👤 <?= htmlspecialchars($_user_email) ?></span>
+      <form method="post" action="api_auth.php" style="margin:0">
+        <input type="hidden" name="action" value="logout">
+        <button type="submit" style="background:transparent;border:1px solid #1e3a5f;color:var(--muted2);
+          padding:.3rem .9rem;border-radius:8px;cursor:pointer;font-size:.78rem;font-family:inherit">
+          Sign Out
+        </button>
+      </form>
+    </div>
+  <?php else: ?>
+    <div style="display:flex;align-items:center;gap:10px">
+      <a href="auth.php" style="color:var(--muted2);text-decoration:none;font-size:.82rem">Sign In</a>
+      <a href="auth.php?tab=signup" class="nav-badge" style="text-decoration:none">Get Started</a>
+    </div>
+  <?php endif; ?>
 </nav>
 
 <div class="ticker-bar">
