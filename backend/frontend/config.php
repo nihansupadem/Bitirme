@@ -4,6 +4,11 @@
  * Edit the SMTP section before deploying if you want email alerts.
  */
 
+// ── Session (must run before session_start in all files) ─────────────────────
+ini_set('session.save_path',      '/tmp');          // writable inside Docker
+ini_set('session.cookie_httponly', '1');
+ini_set('session.cookie_samesite', 'Lax');
+
 // ── Database ─────────────────────────────────────────────────────────────────
 define('DB_PATH', __DIR__ . '/../optrade.db');
 
