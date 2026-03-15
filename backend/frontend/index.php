@@ -177,9 +177,8 @@ nav{position:sticky;top:0;z-index:100;display:flex;align-items:center;justify-co
   <div class="nav-links">
     <a href="index.php" style="color:var(--white)">Analysis</a>
     <?php if ($_logged_in): ?>
-      <a href="dashboard.php">📊 Dashboard</a>
+      <a href="dashboard.php">Dashboard</a>
     <?php endif; ?>
-    <a href="#">Markets</a>
   </div>
   <?php if ($_logged_in): ?>
     <div style="display:flex;align-items:center;gap:10px">
@@ -215,7 +214,7 @@ nav{position:sticky;top:0;z-index:100;display:flex;align-items:center;justify-co
 <section class="hero">
   <h1>Smart Forecasting for<br><span>BIST30 Stocks</span></h1>
   <p>Powered by LSTM deep learning, Hidden Markov Models, and Monte Carlo simulation
-     to deliver next-day price predictions and plain-English trading guidance.</p>
+     to deliver price predictions.</p>
 </section>
 
 <div class="selector-wrap">
