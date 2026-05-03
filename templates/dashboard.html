@@ -1,65 +1,3 @@
-<?php
-/**
- * OpTrade — User Dashboard
- * Shows tracked stocks, latest signals, and allows adding/removing stocks.
- */
-require_once __DIR__ . '/db.php';
-session_start();
-
-// Auth guard
-if (empty($_SESSION['user_id'])) {
-    header('Location: auth.php');
-    exit;
-}
-
-$user_id = (int) $_SESSION['user_id'];
-$user    = db_find_user_by_id($user_id);
-$tracked = db_get_tracked($user_id);
-$csrf    = $_SESSION['csrf'] ?? bin2hex(random_bytes(16));
-$_SESSION['csrf'] = $csrf;
-
-// Fetch latest signal for each tracked ticker
-$signals = [];
-foreach ($tracked as $t) {
-    $signals[$t['ticker']] = db_get_signal($t['ticker']);
-}
-
-$BIST30 = [
-    'AKBNK','ASELS','BIMAS','DOHOL','EKGYO','ENKAI','EREGL',
-    'FROTO','GARAN','GUBRF','HALKB','ISCTR','KCHOL','KOZAA',
-    'KOZAL','KRDMD','MGROS','ODAS','PETKM','PGSUS','SAHOL',
-    'SASA','SISE','TAVHL','TCELL','THYAO','TKFEN','TOASO',
-    'TUPRS','ULKER','VAKBN','VESTL','YKBNK',
-];
-
-function signal_color(string $type): string {
-    return match(true) {
-        str_contains($type,'STRONG BUY')  => '#66BB6A',
-        str_contains($type,'BUY')         => '#A5D6A7',
-        str_contains($type,'HOLD')        => '#FFF176',
-        str_contains($type,'STRONG SELL') => '#EF5350',
-        str_contains($type,'SELL')        => '#EF9A9A',
-        default                           => '#78909C',
-    };
-}
-function signal_emoji(string $type): string {
-    return match(true) {
-        str_contains($type,'STRONG BUY')  => '🚀',
-        str_contains($type,'BUY')         => '📈',
-        str_contains($type,'HOLD')        => '⏸️',
-        str_contains($type,'STRONG SELL') => '🔴',
-        str_contains($type,'SELL')        => '📉',
-        default                           => '❓',
-    };
-}
-function time_ago(string $dt): string {
-    $diff = time() - strtotime($dt);
-    if ($diff < 60)     return 'Just now';
-    if ($diff < 3600)   return floor($diff/60) . 'm ago';
-    if ($diff < 86400)  return floor($diff/3600) . 'h ago';
-    return floor($diff/86400) . 'd ago';
-}
-?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -162,12 +100,11 @@ nav{background:#111E2D;border-bottom:2px solid #1E3A5F;padding:0 24px;display:fl
 <body>
 
 <nav>
-  <a class="nav-brand" href="index.php">📈 OpTrade</a>
-  <a class="nav-link"  href="index.php">Analysis</a>
-  <a class="nav-link"  href="dashboard.php" style="color:#29B6F6;">Dashboard</a>
-  <span class="nav-pill">👤 <?= htmlspecialchars($user['email']) ?></span>
-  <form method="post" action="api_auth.php" style="margin:0">
-    <input type="hidden" name="action" value="logout">
+  <a class="nav-brand" href="/">📈 OpTrade</a>
+  <a class="nav-link"  href="/">Analysis</a>
+  <a class="nav-link"  href="/dashboard" style="color:#29B6F6;">Dashboard</a>
+  <span class="nav-pill">👤 {{ user.email }}</span>
+  <form method="post" action="/logout" style="margin:0">
     <button type="submit" class="btn btn-sm btn-outline">Sign Out</button>
   </form>
 </nav>
@@ -184,7 +121,7 @@ nav{background:#111E2D;border-bottom:2px solid #1E3A5F;padding:0 24px;display:fl
     </div>
     <div style="display:flex;gap:10px;align-items:center">
       <span style="color:#546E7A;font-size:.83rem">
-        Alerts at <span class="threshold-badge">&gt;<?= ALERT_THRESHOLD ?>% strength</span>
+        Alerts at <span class="threshold-badge">&gt;{{ alert_threshold }}% strength</span>
       </span>
       <button class="btn btn-outline" onclick="runAllSignals()" id="btn-refresh-all">
         🔄 Refresh All Signals
@@ -194,8 +131,7 @@ nav{background:#111E2D;border-bottom:2px solid #1E3A5F;padding:0 24px;display:fl
 
   <!-- Cron info banner -->
   <div class="cron-bar">
-    <p>💡 <strong>Auto-alerts:</strong> run <code>php cron_signals.php</code> from the backend
-       folder (or set a cron job) to auto-refresh signals and send emails in the background.</p>
+    <p>💡 <strong>Auto-alerts:</strong> run <code>python cron_signals.py</code> to auto-refresh signals and send emails in the background.</p>
     <button class="btn btn-sm btn-outline" style="border-color:#66BB6A;color:#66BB6A"
             onclick="triggerCron()">▶ Run Scan Now</button>
   </div>
@@ -205,123 +141,120 @@ nav{background:#111E2D;border-bottom:2px solid #1E3A5F;padding:0 24px;display:fl
     <label>Add a stock to track:</label>
     <select id="add-select">
       <option value="">— choose a stock —</option>
-      <?php foreach ($BIST30 as $s): ?>
-        <option value="<?= $s ?>" <?= array_search($s, array_column($tracked,'ticker')) !== false ? 'disabled style="color:#546E7A"' : '' ?>>
-          <?= $s ?><?= array_search($s, array_column($tracked,'ticker')) !== false ? ' (tracked)' : '' ?>
+      {% for s in stocks %}
+        <option value="{{ s }}" {% if s in tracked_tickers %}disabled style="color:#546E7A"{% endif %}>
+          {{ s }}{% if s in tracked_tickers %} (tracked){% endif %}
         </option>
-      <?php endforeach; ?>
+      {% endfor %}
     </select>
     <button class="btn btn-primary" onclick="addStock()">+ Add Stock</button>
     <span style="color:#546E7A;font-size:.82rem;margin-left:auto">
-      <?= count($tracked) ?> / <?= MAX_TRACKED ?> stocks tracked
+      {{ tracked | length }} / {{ max_tracked }} stocks tracked
     </span>
   </div>
 
   <!-- Stock grid -->
-  <?php if (empty($tracked)): ?>
+  {% if not tracked %}
   <div class="empty-state">
     <div class="big">📭</div>
     <h3>No stocks tracked yet</h3>
     <p>Add a BIST30 stock above to start receiving AI signal alerts.</p>
   </div>
-  <?php else: ?>
+  {% else %}
   <div class="grid" id="stock-grid">
-    <?php foreach ($tracked as $t):
-      $ticker = $t['ticker'];
-      $sig    = $signals[$ticker] ?? null;
-    ?>
-    <div class="stock-card" id="card-<?= $ticker ?>">
+    {% for t in tracked %}
+    {% set ticker = t.ticker %}
+    {% set sig = signals.get(ticker) %}
+    <div class="stock-card" id="card-{{ ticker }}">
       <div class="card-top">
         <div style="display:flex;justify-content:space-between;align-items:flex-start">
           <div>
-            <div class="card-ticker"><?= $ticker ?></div>
-            <div class="card-added">Tracked since <?= date('d M Y', strtotime($t['created_at'])) ?></div>
+            <div class="card-ticker">{{ ticker }}</div>
+            <div class="card-added">Tracked since {{ t.created_at | format_date }}</div>
           </div>
-          <a href="index.php?stock=<?= $ticker ?>" target="_blank"
+          <a href="/?stock={{ ticker }}" target="_blank"
              style="color:#29B6F6;font-size:.82rem;text-decoration:none" title="Open analysis">
             🔍 Analyse
           </a>
         </div>
       </div>
 
-      <div class="sig-section" id="sig-<?= $ticker ?>">
-        <?php if ($sig): ?>
-          <?php
-            $sc = signal_color($sig['signal_type']);
-            $se = signal_emoji($sig['signal_type']);
-          ?>
-          <div class="sig-badge" style="background:<?= $sc ?>22;border:1.5px solid <?= $sc ?>;color:<?= $sc ?>">
-            <?= $se ?> <?= htmlspecialchars($sig['signal_type']) ?>
+      <div class="sig-section" id="sig-{{ ticker }}">
+        {% if sig %}
+          {% set sc = sig.signal_type | signal_color %}
+          {% set se = sig.signal_type | signal_emoji %}
+          <div class="sig-badge" style="background:{{ sc }}22;border:1.5px solid {{ sc }};color:{{ sc }}">
+            {{ se }} {{ sig.signal_type }}
           </div>
-          <div class="sig-time">Last updated <?= time_ago($sig['checked_at']) ?></div>
+          <div class="sig-time">Last updated {{ sig.checked_at | time_ago }}</div>
           <!-- strength bar -->
           <div class="str-row">
             <span class="str-label">Strength</span>
             <div class="str-bar">
-              <div class="str-fill" style="width:<?= $sig['signal_strength'] ?>%;background:<?= $sc ?>"></div>
+              <div class="str-fill" style="width:{{ sig.signal_strength }}%;background:{{ sc }}"></div>
             </div>
-            <span class="str-pct" style="color:<?= $sc ?>"><?= $sig['signal_strength'] ?>%</span>
+            <span class="str-pct" style="color:{{ sc }}">{{ sig.signal_strength }}%</span>
           </div>
           <!-- mini metrics -->
           <div class="mini-metrics">
-            <?php if ($sig['last_price']): ?>
+            {% if sig.last_price %}
             <div class="mini-m">
               <div class="mm-l">Price</div>
-              <div class="mm-v">₺<?= number_format($sig['last_price'],2) ?></div>
+              <div class="mm-v">₺{{ sig.last_price | numfmt(2) }}</div>
             </div>
-            <?php endif; ?>
-            <?php if ($sig['price_change'] !== null): ?>
+            {% endif %}
+            {% if sig.price_change is not none %}
             <div class="mini-m">
               <div class="mm-l">Forecast</div>
-              <div class="mm-v" style="color:<?= $sig['price_change']>=0?'#66BB6A':'#EF5350' ?>">
-                <?= $sig['price_change']>=0?'+':'' ?><?= number_format($sig['price_change'],2) ?>%
+              <div class="mm-v" style="color:{% if sig.price_change >= 0 %}#66BB6A{% else %}#EF5350{% endif %}">
+                {% if sig.price_change >= 0 %}+{% endif %}{{ sig.price_change | numfmt(2) }}%
               </div>
             </div>
-            <?php endif; ?>
-            <?php if ($sig['rsi']): ?>
+            {% endif %}
+            {% if sig.rsi %}
             <div class="mini-m">
               <div class="mm-l">RSI</div>
-              <div class="mm-v"><?= number_format($sig['rsi'],1) ?></div>
+              <div class="mm-v">{{ sig.rsi | numfmt(1) }}</div>
             </div>
-            <?php endif; ?>
-            <?php if ($sig['trend']): ?>
+            {% endif %}
+            {% if sig.trend %}
             <div class="mini-m">
               <div class="mm-l">Trend</div>
-              <div class="mm-v" style="font-size:.78rem"><?= htmlspecialchars($sig['trend']) ?></div>
+              <div class="mm-v" style="font-size:.78rem">{{ sig.trend }}</div>
             </div>
-            <?php endif; ?>
+            {% endif %}
           </div>
-          <?php if ($sig['signal_strength'] >= ALERT_THRESHOLD): ?>
+          {% if sig.signal_strength >= alert_threshold %}
           <div style="margin-top:10px;background:#1B3D2A;border-radius:6px;
                       padding:7px 12px;color:#A5D6A7;font-size:.8rem">
             🔔 Alert triggered — email sent to all trackers of this stock
           </div>
-          <?php endif; ?>
-        <?php else: ?>
+          {% endif %}
+        {% else %}
           <div class="no-signal">
             No signal yet — click <strong>Refresh</strong> to run the AI analysis
           </div>
-        <?php endif; ?>
+        {% endif %}
       </div>
 
       <div class="card-actions">
-        <button class="btn btn-sm btn-primary" onclick="refreshSignal('<?= $ticker ?>')"
-                id="refresh-<?= $ticker ?>">
+        <button class="btn btn-sm btn-primary" onclick="refreshSignal('{{ ticker }}')"
+                id="refresh-{{ ticker }}">
           🔄 Refresh Signal
         </button>
-        <button class="btn btn-sm btn-danger" onclick="removeStock('<?= $ticker ?>')">
+        <button class="btn btn-sm btn-danger" onclick="removeStock('{{ ticker }}')">
           🗑 Remove
         </button>
       </div>
     </div>
-    <?php endforeach; ?>
+    {% endfor %}
   </div>
-  <?php endif; ?>
+  {% endif %}
 
 </div><!-- /container -->
 
 <script>
-const CSRF = '<?= htmlspecialchars($csrf) ?>';
+const CSRF = '{{ csrf }}';
 
 function showToast(msg, type='success') {
     const t = document.getElementById('toast');
@@ -336,7 +269,7 @@ async function apiTracked(params) {
     const fd = new FormData();
     fd.append('csrf', CSRF);
     for (const [k,v] of Object.entries(params)) fd.append(k,v);
-    const r = await fetch('api_tracked.php', {method:'POST', body:fd});
+    const r = await fetch('/api/tracked', {method:'POST', body:fd});
     return r.json();
 }
 
@@ -370,7 +303,7 @@ async function refreshSignal(ticker) {
         if (data.ok && data.signal) {
             const s = data.signal;
             const sc = s.color;
-            const stale = s.strength >= <?= ALERT_THRESHOLD ?>;
+            const stale = s.strength >= {{ alert_threshold }};
             sec.innerHTML = `
               <div class="sig-badge" style="background:${sc}22;border:1.5px solid ${sc};color:${sc}">
                 ${s.emoji} ${s.action}
@@ -426,7 +359,7 @@ async function triggerCron() {
     const fd = new FormData();
     fd.append('csrf', CSRF);
     fd.append('action', 'cron');
-    const r = await fetch('api_tracked.php', {method:'POST', body:fd});
+    const r = await fetch('/api/tracked', {method:'POST', body:fd});
     const d = await r.json();
     if (d.ok) showToast(`Scan complete: ${d.message}`);
     else showToast(d.error || 'Scan failed', 'error');

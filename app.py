@@ -1,533 +1,513 @@
 #!/usr/bin/env python3
-"""
-OpTrade — BIST30 Stock Forecasting
-HuggingFace Spaces entry point (Gradio)
-"""
+"""OpTrade — BIST30 Stock Forecasting (Flask web app)"""
 
-import gradio as gr
-import subprocess, json, base64, sys, os
-from PIL import Image
-import io
+import contextlib, json, os, secrets, sqlite3, subprocess, sys
+from datetime import datetime
+from functools import wraps
+
+from flask import (Flask, jsonify, redirect, render_template,
+                   request, session, url_for)
+from werkzeug.security import check_password_hash, generate_password_hash
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 SCRIPT   = os.path.join(BASE_DIR, 'backend', 'train_model.py')
-PYTHON   = sys.executable   # same Python that's running Gradio
+PYTHON   = sys.executable
+DB_PATH  = os.path.join(BASE_DIR, 'optrade.db')
 
-STOCKS = [
-    'AKBNK','ASELS','BIMAS','DOHOL','EKGYO','ENKAI','EREGL',
-    'FROTO','GARAN','GUBRF','HALKB','ISCTR','KCHOL','KOZAA',
-    'KOZAL','KRDMD','MGROS','ODAS','PETKM','PGSUS','SAHOL',
-    'SASA','SISE','TAVHL','TCELL','THYAO','TKFEN','TOASO',
-    'TUPRS','ULKER','VAKBN','VESTL','YKBNK',
+ALERT_THRESHOLD  = 75
+SIGNAL_CACHE_MIN = 60
+MAX_TRACKED      = 20
+RATE_LIMIT_MAX   = 5
+RATE_LIMIT_MIN   = 15
+
+STOCKS = {
+    'AKBNK':'AKBNK - Akbank',        'ASELS':'ASELS - Aselsan',
+    'BIMAS':'BIMAS - BIM',           'DOHOL':'DOHOL - Dogan Holding',
+    'EKGYO':'EKGYO - Emlak Konut',   'ENKAI':'ENKAI - Enka Insaat',
+    'EREGL':'EREGL - Eregli Demir',  'FROTO':'FROTO - Ford Otosan',
+    'GARAN':'GARAN - Garanti BBVA',  'GUBRF':'GUBRF - Gubre Fabrikalari',
+    'HALKB':'HALKB - Halkbank',      'ISCTR':'ISCTR - Is Bankasi',
+    'KCHOL':'KCHOL - Koc Holding',   'KOZAA':'KOZAA - Koza Anadolu',
+    'KOZAL':'KOZAL - Koza Altin',    'KRDMD':'KRDMD - Kardemir',
+    'MGROS':'MGROS - Migros',        'ODAS' :'ODAS - Odas Elektrik',
+    'PETKM':'PETKM - Petkim',        'PGSUS':'PGSUS - Pegasus',
+    'SAHOL':'SAHOL - Sabanci Holding','SASA':'SASA - SASA Polyester',
+    'SISE' :'SISE - Sisecam',        'TAVHL':'TAVHL - TAV Havalimanlari',
+    'TCELL':'TCELL - Turkcell',      'THYAO':'THYAO - Turkish Airlines',
+    'TKFEN':'TKFEN - Tekfen Holding','TOASO':'TOASO - Tofas',
+    'TUPRS':'TUPRS - Tupras',        'ULKER':'ULKER - Ulker Biskuvi',
+    'VAKBN':'VAKBN - Vakifbank',     'VESTL':'VESTL - Vestel',
+    'YKBNK':'YKBNK - Yapi Kredi',
+}
+
+TICKER_BAR = [
+    ('YKBNK','+1.2%','up'),  ('GARAN','+0.8%','up'),  ('THYAO','-0.5%','down'),
+    ('FROTO','+2.1%','up'),  ('TUPRS','+0.3%','up'),  ('TCELL','-0.2%','down'),
+    ('AKBNK','+1.5%','up'),  ('PETKM','+0.6%','up'),  ('BIMAS','-0.9%','down'),
+    ('EREGL','+1.8%','up'),  ('KCHOL','+0.4%','up'),  ('SAHOL','-0.1%','down'),
 ]
 
-# ── dark theme CSS ─────────────────────────────────────────────────────────────
-DARK_CSS = """
-body, .gradio-container {
-    background: #0D1B2A !important;
-    color: #ECEFF1 !important;
-    font-family: 'Segoe UI', system-ui, sans-serif !important;
+SIGNAL_COLORS = {
+    'STRONG BUY':'#66BB6A','BUY':'#A5D6A7','HOLD':'#FFF176',
+    'SELL':'#EF9A9A','STRONG SELL':'#EF5350',
 }
-.header-band {
-    background: linear-gradient(135deg, #0D1B2A 0%, #1A2B3C 100%);
-    border-bottom: 2px solid #29B6F6;
-    padding: 28px 32px 18px;
-    margin-bottom: 24px;
-    border-radius: 10px;
+SIGNAL_EMOJIS = {
+    'STRONG BUY':'🚀','BUY':'📈','HOLD':'⏸️','SELL':'📉','STRONG SELL':'🔴',
 }
-.header-band h1 {
-    font-size: 2.6rem;
-    font-weight: 800;
-    letter-spacing: -1px;
-    background: linear-gradient(90deg,#29B6F6,#AB47BC);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    margin: 0 0 4px 0;
-}
-.header-band p { color:#78909C; margin:0; font-size:0.95rem; }
-/* signal banner */
-.signal-banner {
-    padding: 20px 28px;
-    border-radius: 12px;
-    margin: 20px 0;
-    display: flex;
-    align-items: center;
-    gap: 20px;
-    font-size: 1.1rem;
-    font-weight: 600;
-}
-.signal-STRONG-BUY  { background:#1B4332; border:2px solid #66BB6A; }
-.signal-BUY         { background:#1B3D2A; border:2px solid #A5D6A7; }
-.signal-HOLD        { background:#2C2800; border:2px solid #FFF176; }
-.signal-SELL        { background:#3D1A1A; border:2px solid #EF9A9A; }
-.signal-STRONG-SELL { background:#4A0A0A; border:2px solid #EF5350; }
-/* info cards grid */
-.cards-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-    gap: 16px;
-    margin: 16px 0;
-}
-.card {
-    background: #1A2B3C;
-    border: 1px solid #1E3A5F;
-    border-radius: 10px;
-    padding: 16px 20px;
-}
-.card .label { color:#78909C; font-size:0.78rem; text-transform:uppercase; letter-spacing:.06em; }
-.card .value { font-size:1.6rem; font-weight:700; color:#29B6F6; margin:4px 0 2px; }
-.card .sub   { font-size:0.82rem; color:#90A4AE; }
-/* levels */
-.levels-grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 16px;
-    margin: 16px 0;
-}
-.level-card { background:#1A2B3C; border-radius:10px; padding:16px; text-align:center; }
-.level-card .lc-label { color:#78909C; font-size:0.78rem; text-transform:uppercase; }
-.level-card .lc-val   { font-size:1.5rem; font-weight:700; margin:4px 0; }
-.lc-entry  { border:2px solid #29B6F6; }
-.lc-target { border:2px solid #66BB6A; }
-.lc-stop   { border:2px solid #EF5350; }
-/* context cards */
-.ctx-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-    gap: 16px;
-    margin: 16px 0;
-}
-.ctx-card { background:#1A2B3C; border:1px solid #1E3A5F; border-radius:10px; padding:16px 20px; }
-.ctx-card .ctx-title { font-weight:700; font-size:1rem; margin-bottom:6px; }
-.ctx-card .ctx-desc  { color:#90A4AE; font-size:0.87rem; line-height:1.55; }
-/* summary box */
-.summary-box {
-    background: #1A2B3C;
-    border-left: 4px solid #29B6F6;
-    border-radius: 0 10px 10px 0;
-    padding: 16px 22px;
-    margin: 16px 0;
-    color: #CFD8DC;
-    font-size: 0.95rem;
-    line-height: 1.65;
-}
-/* metric pills */
-.metrics-row { display:flex; gap:12px; flex-wrap:wrap; margin:16px 0; }
-.metric-pill {
-    background:#1A2B3C;
-    border:1px solid #1E3A5F;
-    border-radius:8px;
-    padding:10px 18px;
-    text-align:center;
-}
-.metric-pill .mp-label { color:#78909C; font-size:0.73rem; text-transform:uppercase; }
-.metric-pill .mp-val   { color:#29B6F6; font-size:1.15rem; font-weight:700; }
-/* section titles */
-.sec-title {
-    color:#ECEFF1;
-    font-size:1.1rem;
-    font-weight:700;
-    margin:24px 0 10px;
-    padding-bottom:6px;
-    border-bottom:1px solid #1E3A5F;
-}
-.disclaimer {
-    background:#0D1B2A;
-    border:1px solid #1E3A5F;
-    border-radius:8px;
-    padding:14px 20px;
-    color:#78909C;
-    font-size:0.8rem;
-    margin-top:20px;
-}
-/* live data badge */
-.live-badge {
-    display: inline-block;
-    background: #00C853;
-    color: #fff;
-    font-size: 0.65rem;
-    font-weight: 700;
-    padding: 2px 8px;
-    border-radius: 10px;
-    letter-spacing: 0.04em;
-    animation: pulse-live 2s infinite;
-    vertical-align: middle;
-    margin-left: 6px;
-}
-@keyframes pulse-live {
-    0%, 100% { opacity:1; }
-    50%      { opacity:0.5; }
-}
-.live-row {
-    background: linear-gradient(90deg, #0D2818 0%, #1A2B3C 100%);
-    border: 1px solid #00C853;
-    border-radius: 10px;
-    padding: 14px 20px;
-    margin-bottom: 12px;
-    display: flex;
-    align-items: center;
-    gap: 24px;
-    flex-wrap: wrap;
-}
-.live-row .live-item { text-align:center; min-width:80px; }
-.live-row .live-label { color:#78909C; font-size:0.7rem; text-transform:uppercase; }
-.live-row .live-val { color:#00E676; font-size:1.15rem; font-weight:700; }
-/* Gradio overrides */
-.gr-button-primary { background:#29B6F6 !important; border-color:#29B6F6 !important; }
-label { color:#90A4AE !important; }
-select, .gr-box { background:#1A2B3C !important; border-color:#1E3A5F !important; color:#ECEFF1 !important; }
-"""
 
-# ── helpers ────────────────────────────────────────────────────────────────────
-def b64_to_pil(b64str):
-    return Image.open(io.BytesIO(base64.b64decode(b64str)))
+app = Flask(__name__)
+app.secret_key = os.environ.get('SECRET_KEY', secrets.token_hex(32))
 
-def error_html(msg):
-    return f"""
-    <div style="background:#3D1A1A;border:2px solid #EF5350;border-radius:12px;
-                padding:24px;margin:20px 0;color:#ECEFF1;">
-        <div style="font-size:1.3rem;font-weight:700;color:#EF5350;margin-bottom:8px;">
-            ❌ Error
-        </div>
-        <div style="color:#CFD8DC;">{msg}</div>
-        <div style="margin-top:12px;color:#78909C;font-size:0.85rem;">
-            Tip: Data sources may be temporarily unavailable. Wait 30 seconds and try again,
-            or try a different stock.
-        </div>
-    </div>"""
+# ── Database ───────────────────────────────────────────────────────────────────
 
-def action_color(action):
-    return {
-        'STRONG BUY':  '#66BB6A',
-        'BUY':         '#A5D6A7',
-        'HOLD':        '#FFF176',
-        'SELL':        '#EF9A9A',
-        'STRONG SELL': '#EF5350',
-    }.get(action, '#29B6F6')
+@contextlib.contextmanager
+def get_db():
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON")
+    try:
+        yield conn
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
-def action_emoji(action):
-    return {
-        'STRONG BUY':  '🚀',
-        'BUY':         '📈',
-        'HOLD':        '⏸️',
-        'SELL':        '📉',
-        'STRONG SELL': '🔴',
-    }.get(action, '📊')
+def init_db():
+    conn = sqlite3.connect(DB_PATH)
+    conn.execute("PRAGMA journal_mode = WAL")
+    conn.commit()
+    conn.executescript("""
+        CREATE TABLE IF NOT EXISTS users (
+            id            INTEGER  PRIMARY KEY AUTOINCREMENT,
+            email         TEXT     UNIQUE NOT NULL,
+            password_hash TEXT     NOT NULL,
+            created_at    DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+        CREATE TABLE IF NOT EXISTS tracked_stocks (
+            id         INTEGER  PRIMARY KEY AUTOINCREMENT,
+            user_id    INTEGER  NOT NULL,
+            ticker     TEXT     NOT NULL,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            UNIQUE(user_id, ticker)
+        );
+        CREATE INDEX IF NOT EXISTS idx_ts_user   ON tracked_stocks(user_id);
+        CREATE INDEX IF NOT EXISTS idx_ts_ticker ON tracked_stocks(ticker);
+        CREATE TABLE IF NOT EXISTS signals (
+            id              INTEGER  PRIMARY KEY AUTOINCREMENT,
+            ticker          TEXT     NOT NULL,
+            signal_type     TEXT     NOT NULL,
+            signal_strength INTEGER  NOT NULL,
+            score           INTEGER,
+            last_price      REAL,
+            next_day_price  REAL,
+            price_change    REAL,
+            rsi             REAL,
+            trend           TEXT,
+            hmm_label       TEXT,
+            summary         TEXT,
+            checked_at      DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS idx_sig_ticker ON signals(ticker);
+        CREATE TABLE IF NOT EXISTS email_log (
+            id              INTEGER  PRIMARY KEY AUTOINCREMENT,
+            user_id         INTEGER  NOT NULL,
+            ticker          TEXT     NOT NULL,
+            signal_type     TEXT     NOT NULL,
+            signal_strength INTEGER  NOT NULL,
+            sent_at         DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        );
+        CREATE TABLE IF NOT EXISTS login_attempts (
+            id         INTEGER  PRIMARY KEY AUTOINCREMENT,
+            ip         TEXT     NOT NULL,
+            email      TEXT     NOT NULL,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+    """)
+    conn.close()
 
-def build_html(data):
-    sig   = data['signal']
-    met   = data['metrics']
-    trd   = data['trading']
-    sym   = data['symbol']
-    lp    = data['last_price']
-    ndp   = data['next_day_price']
-    pch   = data['price_change']
-    ld    = data['last_date']
-    action = sig['action']
-    css_cls = 'signal-' + action.replace(' ', '-')
-    ac  = action_color(action)
-    emo = action_emoji(action)
-    pch_sign = '+' if pch >= 0 else ''
+def db_create_user(email, password):
+    try:
+        with get_db() as conn:
+            conn.execute(
+                "INSERT INTO users (email, password_hash) VALUES (?, ?)",
+                (email, generate_password_hash(password))
+            )
+            return conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    except sqlite3.IntegrityError:
+        return None
 
-    # Build live-price banner if BIST live data is available
-    live_html = ''
-    bl = data.get('bist_live')
-    if bl and bl.get('live_price'):
-        live_html = f"""
-<div class="live-row">
-  <div style="font-weight:700;color:#00E676;font-size:1rem;">
-    BORSA ISTANBUL <span class="live-badge">LIVE</span>
-  </div>
-  <div class="live-item">
-    <div class="live-label">Price</div>
-    <div class="live-val">{bl['live_price']:.2f}</div>
-  </div>
-  <div class="live-item">
-    <div class="live-label">Open</div>
-    <div class="live-val" style="color:#29B6F6;">{bl['open']:.2f}</div>
-  </div>
-  <div class="live-item">
-    <div class="live-label">High</div>
-    <div class="live-val" style="color:#66BB6A;">{bl['high']:.2f}</div>
-  </div>
-  <div class="live-item">
-    <div class="live-label">Low</div>
-    <div class="live-val" style="color:#EF5350;">{bl['low']:.2f}</div>
-  </div>
-  <div class="live-item">
-    <div class="live-label">Bid</div>
-    <div class="live-val" style="color:#90A4AE;">{bl['bid']:.2f}</div>
-  </div>
-  <div class="live-item">
-    <div class="live-label">Ask</div>
-    <div class="live-val" style="color:#90A4AE;">{bl['ask']:.2f}</div>
-  </div>
-  <div style="color:#546E7A;font-size:0.7rem;margin-left:auto;">{bl.get('live_time','')}</div>
-</div>"""
+def db_find_user_by_email(email):
+    with get_db() as conn:
+        row = conn.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
+        return dict(row) if row else None
 
-    return f"""
-<div>
+def db_find_user_by_id(user_id):
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT id, email, created_at FROM users WHERE id = ?", (user_id,)
+        ).fetchone()
+        return dict(row) if row else None
 
-{live_html}
+def db_add_tracked(user_id, ticker):
+    try:
+        with get_db() as conn:
+            conn.execute(
+                "INSERT OR IGNORE INTO tracked_stocks (user_id, ticker) VALUES (?, ?)",
+                (user_id, ticker.upper())
+            )
+        return True
+    except Exception:
+        return False
 
-<!-- header row -->
-<div class="cards-grid" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr))">
-  <div class="card">
-    <div class="label">Symbol</div>
-    <div class="value" style="font-size:1.3rem;">{sym}</div>
-    <div class="sub">As of {ld}</div>
-  </div>
-  <div class="card">
-    <div class="label">Current Price</div>
-    <div class="value">{lp:.2f}</div>
-    <div class="sub">TRY (last close)</div>
-  </div>
-  <div class="card">
-    <div class="label">Tomorrow's Forecast</div>
-    <div class="value">{ndp:.2f}</div>
-    <div class="sub" style="color:{'#66BB6A' if pch>=0 else '#EF5350'}">
-      {pch_sign}{pch:.2f}% vs today
-    </div>
-  </div>
-  <div class="card">
-    <div class="label">Signal Strength</div>
-    <div class="value" style="color:{ac}">{sig['strength']}%</div>
-    <div class="sub">Score {sig['score']} / 6</div>
-  </div>
-</div>
+def db_remove_tracked(user_id, ticker):
+    with get_db() as conn:
+        conn.execute(
+            "DELETE FROM tracked_stocks WHERE user_id = ? AND ticker = ?",
+            (user_id, ticker.upper())
+        )
 
-<!-- signal banner -->
-<div class="signal-banner {css_cls}">
-  <span style="font-size:2.2rem;">{emo}</span>
-  <div>
-    <div style="font-size:1.5rem;font-weight:800;color:{ac};">{action}</div>
-    <div style="font-size:0.9rem;font-weight:400;color:#90A4AE;margin-top:2px;">
-      AI Recommendation based on LSTM · RSI · EMA · HMM
-    </div>
-  </div>
-</div>
+def db_get_tracked(user_id):
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT ticker, created_at FROM tracked_stocks WHERE user_id = ? ORDER BY created_at DESC",
+            (user_id,)
+        ).fetchall()
+        return [dict(r) for r in rows]
 
-<!-- summary -->
-<div class="summary-box">{sig['summary']}</div>
+def db_count_tracked(user_id):
+    with get_db() as conn:
+        return conn.execute(
+            "SELECT COUNT(*) FROM tracked_stocks WHERE user_id = ?", (user_id,)
+        ).fetchone()[0]
 
-<!-- key levels -->
-<div class="sec-title">📍 Key Trading Levels</div>
-<div class="levels-grid">
-  <div class="level-card lc-entry">
-    <div class="lc-label">Entry Zone</div>
-    <div class="lc-val" style="color:#29B6F6;">{sig['entry_low']:.2f} – {sig['entry_high']:.2f}</div>
-    <div style="color:#78909C;font-size:0.8rem;">Suggested buy range (TRY)</div>
-  </div>
-  <div class="level-card lc-target">
-    <div class="lc-label">Price Target</div>
-    <div class="lc-val" style="color:#66BB6A;">{sig['target']:.2f}</div>
-    <div style="color:#78909C;font-size:0.8rem;">Model's short-term target</div>
-  </div>
-  <div class="level-card lc-stop">
-    <div class="lc-label">Stop Loss</div>
-    <div class="lc-val" style="color:#EF5350;">{sig['stop_loss']:.2f}</div>
-    <div style="color:#78909C;font-size:0.8rem;">Exit if price drops below</div>
-  </div>
-</div>
+def db_save_signal(d):
+    with get_db() as conn:
+        conn.execute("DELETE FROM signals WHERE ticker = ?", (d['ticker'],))
+        conn.execute("""
+            INSERT INTO signals
+                (ticker, signal_type, signal_strength, score, last_price,
+                 next_day_price, price_change, rsi, trend, hmm_label, summary)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?)
+        """, (
+            d['ticker'], d['signal_type'], d['signal_strength'],
+            d.get('score'), d.get('last_price'), d.get('next_day_price'),
+            d.get('price_change'), d.get('rsi'), d.get('trend'),
+            d.get('hmm_label'), d.get('summary'),
+        ))
 
-<!-- market context -->
-<div class="sec-title">🔍 Market Context</div>
-<div class="ctx-grid">
-  <div class="ctx-card">
-    <div class="ctx-title" style="color:#AB47BC;">📊 RSI — {sig['rsi_label']}</div>
-    <div class="ctx-desc">{sig['rsi_desc']}</div>
-  </div>
-  <div class="ctx-card">
-    <div class="ctx-title" style="color:#29B6F6;">📉 Trend — {sig['trend']}</div>
-    <div class="ctx-desc">{sig['trend_desc']}</div>
-  </div>
-  <div class="ctx-card">
-    <div class="ctx-title" style="color:#FFA726;">🤖 AI Regime — {sig['hmm_label']}</div>
-    <div class="ctx-desc">{sig['hmm_desc']}</div>
-  </div>
-</div>
+def db_get_signal(ticker):
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT * FROM signals WHERE ticker = ? LIMIT 1", (ticker.upper(),)
+        ).fetchone()
+        return dict(row) if row else None
 
-<!-- model metrics -->
-<div class="sec-title">📐 Model Accuracy (Out-of-Sample, last 20% of data)</div>
-<div class="metrics-row">
-  <div class="metric-pill">
-    <div class="mp-label">MAE</div>
-    <div class="mp-val">{met['mae']:.4f}</div>
-  </div>
-  <div class="metric-pill">
-    <div class="mp-label">RMSE</div>
-    <div class="mp-val">{met['rmse']:.4f}</div>
-  </div>
-  <div class="metric-pill">
-    <div class="mp-label">MAPE</div>
-    <div class="mp-val">{met['mape']:.2f}%</div>
-  </div>
-  <div class="metric-pill">
-    <div class="mp-label">MSE</div>
-    <div class="mp-val">{met['mse']:.4f}</div>
-  </div>
-</div>
-<div style="color:#546E7A;font-size:0.8rem;margin:-8px 0 12px;">
-  ℹ️ Metrics computed on test data the model never trained on (honest out-of-sample evaluation)
-</div>
+def db_signal_is_fresh(ticker):
+    sig = db_get_signal(ticker)
+    if not sig:
+        return False
+    try:
+        checked = datetime.fromisoformat(sig['checked_at'])
+        return (datetime.utcnow() - checked).total_seconds() / 60 < SIGNAL_CACHE_MIN
+    except Exception:
+        return False
 
-<!-- backtest stats -->
-<div class="sec-title">💼 Strategy Backtest ({trd['test_days']}-day out-of-sample)</div>
-<div class="cards-grid">
-  <div class="card">
-    <div class="label">Starting Capital</div>
-    <div class="value" style="font-size:1.2rem;">₺100,000</div>
-  </div>
-  <div class="card">
-    <div class="label">Final Portfolio Value</div>
-    <div class="value" style="font-size:1.2rem;color:{'#66BB6A' if trd['final_value']>=100000 else '#EF5350'}">
-      ₺{trd['final_value']:,.0f}
-    </div>
-  </div>
-  <div class="card">
-    <div class="label">Profit / Loss</div>
-    <div class="value" style="font-size:1.2rem;color:{'#66BB6A' if trd['total_profit']>=0 else '#EF5350'}">
-      {'+' if trd['total_profit']>=0 else ''}{trd['total_profit']:,.0f} TRY
-    </div>
-    <div class="sub">{'+' if trd['profit_pct']>=0 else ''}{trd['profit_pct']:.1f}%</div>
-  </div>
-  <div class="card">
-    <div class="label">Win Rate</div>
-    <div class="value">{trd['success_rate']:.1f}%</div>
-    <div class="sub">{trd['num_trades']} trades placed</div>
-  </div>
-</div>
+def db_rate_limited(ip, email):
+    with get_db() as conn:
+        conn.execute(
+            "DELETE FROM login_attempts WHERE created_at < datetime('now', ?)",
+            (f'-{RATE_LIMIT_MIN} minutes',)
+        )
+        count = conn.execute(
+            "SELECT COUNT(*) FROM login_attempts WHERE ip = ? AND email = ?",
+            (ip, email)
+        ).fetchone()[0]
+        return count >= RATE_LIMIT_MAX
 
-<!-- disclaimer -->
-<div class="disclaimer">
-  ⚠️ <strong>Disclaimer:</strong> OpTrade is an AI research tool, not financial advice.
-  All forecasts are probabilistic and can be wrong. Past backtest performance does not
-  guarantee future results. Always do your own research and consult a licensed financial
-  adviser before investing. Never invest money you cannot afford to lose.
-</div>
+def db_record_attempt(ip, email):
+    with get_db() as conn:
+        conn.execute(
+            "INSERT INTO login_attempts (ip, email) VALUES (?, ?)", (ip, email)
+        )
 
-</div>"""
+def db_all_unique_tickers():
+    with get_db() as conn:
+        rows = conn.execute("SELECT DISTINCT ticker FROM tracked_stocks").fetchall()
+        return [r['ticker'] for r in rows]
 
-# ── core analysis function ─────────────────────────────────────────────────────
-def analyze_stock(symbol, progress=gr.Progress(track_tqdm=True)):
-    full_sym = symbol + '.IS'
+def db_users_tracking(ticker):
+    with get_db() as conn:
+        rows = conn.execute("""
+            SELECT u.id, u.email 
+            FROM tracked_stocks ts
+            JOIN users u ON ts.user_id = u.id
+            WHERE ts.ticker = ?
+        """, (ticker.upper(),)).fetchall()
+        return [dict(r) for r in rows]
 
-    progress(0.05, desc="📡 Connecting to Yahoo Finance...")
+def db_already_notified(user_id, ticker, signal_type):
+    with get_db() as conn:
+        count = conn.execute("""
+            SELECT COUNT(*) FROM email_log 
+            WHERE user_id = ? AND ticker = ? AND signal_type = ? 
+            AND date(sent_at) = date('now')
+        """, (user_id, ticker.upper(), signal_type)).fetchone()[0]
+        return count > 0
 
+def db_log_email(user_id, ticker, signal_type, signal_strength):
+    with get_db() as conn:
+        conn.execute("""
+            INSERT INTO email_log (user_id, ticker, signal_type, signal_strength)
+            VALUES (?, ?, ?, ?)
+        """, (user_id, ticker.upper(), signal_type, signal_strength))
+
+# ── Jinja2 filters ─────────────────────────────────────────────────────────────
+
+@app.template_filter('time_ago')
+def time_ago(dt_str):
+    try:
+        diff = (datetime.utcnow() - datetime.fromisoformat(str(dt_str))).total_seconds()
+        if diff < 60:    return 'Just now'
+        if diff < 3600:  return f'{int(diff / 60)}m ago'
+        if diff < 86400: return f'{int(diff / 3600)}h ago'
+        return f'{int(diff / 86400)}d ago'
+    except Exception:
+        return str(dt_str)
+
+@app.template_filter('format_date')
+def format_date(dt_str):
+    try:
+        return datetime.fromisoformat(str(dt_str)).strftime('%d %b %Y')
+    except Exception:
+        return str(dt_str)
+
+@app.template_filter('numfmt')
+def numfmt(value, decimals=2):
+    try:
+        return f'{float(value):,.{decimals}f}'
+    except (TypeError, ValueError):
+        return '--'
+
+@app.template_filter('signal_color')
+def signal_color(signal_type):
+    for k, v in SIGNAL_COLORS.items():
+        if k in (signal_type or ''):
+            return v
+    return '#78909C'
+
+@app.template_filter('signal_emoji')
+def signal_emoji(signal_type):
+    for k, v in SIGNAL_EMOJIS.items():
+        if k in (signal_type or ''):
+            return v
+    return '❓'
+
+# ── Helpers ────────────────────────────────────────────────────────────────────
+
+def login_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if 'user_id' not in session:
+            return redirect(url_for('auth'))
+        return f(*args, **kwargs)
+    return decorated
+
+def get_csrf():
+    if 'csrf' not in session:
+        session['csrf'] = secrets.token_hex(16)
+    return session['csrf']
+
+def check_csrf(token):
+    return secrets.compare_digest(token or '', session.get('csrf', ''))
+
+def run_analysis(symbol):
     try:
         result = subprocess.run(
-            [PYTHON, SCRIPT, full_sym],
-            capture_output=True,
-            text=True,
-            timeout=360,
-            cwd=BASE_DIR
+            [PYTHON, SCRIPT, symbol + '.IS'],
+            capture_output=True, text=True, timeout=360, cwd=BASE_DIR
         )
         output = result.stdout
-
-        progress(0.85, desc="🎨 Rendering results...")
-
-        # Find JSON in output (skip any warning lines before/after)
-        json_start = output.find('{')
-        if json_start == -1:
-            err = result.stderr[-500:] if result.stderr else "No output from model."
-            return error_html(f"Model produced no JSON output. stderr: {err}"), None, None, None
-
-        json_end = output.rfind('}')
-        if json_end == -1:
-            return error_html("Malformed JSON output from model."), None, None, None
-
-        data = json.loads(output[json_start:json_end + 1])
-
-        if 'error' in data:
-            return error_html(data['error']), None, None, None
-
-        # Build HTML panel
-        html = build_html(data)
-
-        # Convert base64 charts to PIL images
-        c1 = b64_to_pil(data['charts']['last_100_days'])
-        c2 = b64_to_pil(data['charts']['full_range'])
-        c3 = b64_to_pil(data['charts']['trading_strategy'])
-
-        progress(1.0, desc="✅ Done!")
-        return html, c1, c2, c3
-
+        j0, j1 = output.find('{'), output.rfind('}')
+        if j0 == -1 or j1 == -1:
+            return {'error': f'No output from model. stderr: {result.stderr[-400:]}'}
+        return json.loads(output[j0:j1 + 1])
     except subprocess.TimeoutExpired:
-        return error_html("Analysis timed out (>6 min). The server may be busy — please try again in a moment."), None, None, None
+        return {'error': 'Analysis timed out (>6 min). Please try again.'}
     except json.JSONDecodeError as e:
-        return error_html(f"JSON parse error: {e}"), None, None, None
+        return {'error': f'JSON parse error: {e}'}
     except Exception as e:
-        return error_html(str(e)), None, None, None
+        return {'error': str(e)}
 
-# ── Gradio UI ──────────────────────────────────────────────────────────────────
-with gr.Blocks(title="OpTrade — BIST30 Forecasting") as demo:
+def persist_signal(symbol, data):
+    db_save_signal({
+        'ticker':          symbol,
+        'signal_type':     data['signal']['action'],
+        'signal_strength': data['signal']['strength'],
+        'score':           data['signal'].get('score'),
+        'last_price':      data.get('last_price'),
+        'next_day_price':  data.get('next_day_price'),
+        'price_change':    data.get('price_change'),
+        'rsi':             data['signal'].get('rsi'),
+        'trend':           data['signal'].get('trend'),
+        'hmm_label':       data['signal'].get('hmm_label'),
+        'summary':         data['signal'].get('summary'),
+    })
 
-    gr.HTML("""
-    <div class="header-band">
-      <h1>📈 OpTrade</h1>
-      <p>AI-powered BIST30 stock forecasting · LSTM + HMM + Monte Carlo · for educational purposes only</p>
-    </div>
-    """)
+# ── Routes ─────────────────────────────────────────────────────────────────────
 
-    with gr.Row():
-        with gr.Column(scale=3):
-            stock_dd = gr.Dropdown(
-                choices=STOCKS,
-                value='YKBNK',
-                label='Select a BIST30 Stock',
-                info='Pick any stock from the Istanbul Stock Exchange BIST30 index',
-            )
-        with gr.Column(scale=1):
-            analyze_btn = gr.Button(
-                '🔍 Analyze',
-                variant='primary',
-                size='lg',
-            )
-
-    gr.HTML("""
-    <div style="background:#1A2B3C;border:1px solid #1E3A5F;border-radius:8px;
-                padding:12px 20px;color:#78909C;font-size:0.85rem;margin-bottom:8px;">
-      ⏳ <strong>First analysis takes 2–4 minutes</strong> — the AI trains fresh on each stock.
-      Subsequent requests for the same stock use a 12-hour cache and are much faster.
-    </div>
-    """)
-
-    results_html = gr.HTML(label="Analysis Results")
-
-    gr.HTML('<div class="sec-title">📊 Charts</div>')
-
-    with gr.Row():
-        chart1 = gr.Image(
-            label='Last 100 Days — Actual vs Predicted',
-            type='pil',
-            buttons=["download"],
-        )
-        chart2 = gr.Image(
-            label='Full History — Actual vs Predicted',
-            type='pil',
-            buttons=["download"],
-        )
-
-    chart3 = gr.Image(
-        label='Trading Strategy Backtest (▲ Buy · ▼ Sell signals)',
-        type='pil',
-        buttons=["download"],
+@app.route('/')
+def index():
+    return render_template('index.html',
+        logged_in=('user_id' in session),
+        user_email=session.get('email', ''),
+        csrf=get_csrf(),
+        stocks=STOCKS,
+        ticker_bar=TICKER_BAR,
+        stock_param=request.args.get('stock', ''),
     )
 
-    gr.HTML("""
-    <div style="color:#546E7A;font-size:0.78rem;text-align:center;padding:8px 0 16px;">
-      Blue line = Actual price &nbsp;|&nbsp; Orange dashed = Model prediction &nbsp;|&nbsp;
-      Green region = Out-of-sample test zone
-    </div>
-    """)
-
-    analyze_btn.click(
-        fn=analyze_stock,
-        inputs=[stock_dd],
-        outputs=[results_html, chart1, chart2, chart3],
-        show_progress=True,
-        api_name="predict",
+@app.route('/auth')
+def auth():
+    if 'user_id' in session:
+        return redirect(url_for('dashboard'))
+    return render_template('auth.html',
+        tab=request.args.get('tab', 'login'),
+        csrf=get_csrf(),
     )
+
+@app.route('/dashboard')
+@login_required
+def dashboard():
+    uid     = session['user_id']
+    tracked = db_get_tracked(uid)
+    return render_template('dashboard.html',
+        user=db_find_user_by_id(uid),
+        tracked=tracked,
+        tracked_tickers={t['ticker'] for t in tracked},
+        signals={t['ticker']: db_get_signal(t['ticker']) for t in tracked},
+        stocks=list(STOCKS.keys()),
+        csrf=get_csrf(),
+        alert_threshold=ALERT_THRESHOLD,
+        max_tracked=MAX_TRACKED,
+    )
+
+@app.route('/logout', methods=['GET', 'POST'])
+def logout():
+    session.clear()
+    return redirect(url_for('index'))
+
+# ── API ────────────────────────────────────────────────────────────────────────
+
+@app.route('/api/analyze')
+def api_analyze():
+    symbol = request.args.get('symbol', '').upper()
+    if not symbol or symbol not in STOCKS:
+        return jsonify({'error': 'Invalid symbol'}), 400
+    data = run_analysis(symbol)
+    if 'error' not in data:
+        persist_signal(symbol, data)
+    return jsonify(data)
+
+@app.route('/api/auth', methods=['POST'])
+def api_auth_route():
+    action = request.form.get('action')
+    if not check_csrf(request.form.get('csrf')):
+        return jsonify({'ok': False, 'error': 'Invalid request token'}), 403
+
+    if action == 'login':
+        email = request.form.get('email', '').lower().strip()
+        pw    = request.form.get('password', '')
+        ip    = request.remote_addr
+        if db_rate_limited(ip, email):
+            return jsonify({'ok': False, 'error': 'Too many attempts. Try again later.'})
+        user = db_find_user_by_email(email)
+        if not user or not check_password_hash(user['password_hash'], pw):
+            db_record_attempt(ip, email)
+            return jsonify({'ok': False, 'error': 'Invalid email or password.'})
+        session['user_id'] = user['id']
+        session['email']   = user['email']
+        return jsonify({'ok': True, 'redirect': url_for('dashboard')})
+
+    if action == 'signup':
+        email = request.form.get('email', '').lower().strip()
+        pw    = request.form.get('password', '')
+        pw2   = request.form.get('password2', '')
+        if not email or not pw:
+            return jsonify({'ok': False, 'error': 'Email and password are required.'})
+        if len(pw) < 8:
+            return jsonify({'ok': False, 'error': 'Password must be at least 8 characters.'})
+        if pw != pw2:
+            return jsonify({'ok': False, 'error': 'Passwords do not match.'})
+        uid = db_create_user(email, pw)
+        if uid is None:
+            return jsonify({'ok': False, 'error': 'An account with this email already exists.'})
+        session['user_id'] = uid
+        session['email']   = email
+        return jsonify({'ok': True, 'redirect': url_for('dashboard')})
+
+    return jsonify({'ok': False, 'error': 'Unknown action'}), 400
+
+@app.route('/api/tracked', methods=['POST'])
+@login_required
+def api_tracked():
+    uid    = session['user_id']
+    action = request.form.get('action')
+    if not check_csrf(request.form.get('csrf')):
+        return jsonify({'ok': False, 'error': 'Invalid request token'}), 403
+
+    if action == 'add':
+        ticker = request.form.get('ticker', '').upper()
+        if ticker not in STOCKS:
+            return jsonify({'ok': False, 'error': 'Invalid ticker'})
+        if db_count_tracked(uid) >= MAX_TRACKED:
+            return jsonify({'ok': False, 'error': f'Max {MAX_TRACKED} stocks allowed'})
+        db_add_tracked(uid, ticker)
+        return jsonify({'ok': True})
+
+    if action == 'remove':
+        ticker = request.form.get('ticker', '').upper()
+        db_remove_tracked(uid, ticker)
+        return jsonify({'ok': True})
+
+    if action == 'refresh':
+        ticker = request.form.get('ticker', '').upper()
+        if ticker not in STOCKS:
+            return jsonify({'ok': False, 'error': 'Invalid ticker'})
+        data = run_analysis(ticker)
+        if 'error' in data:
+            return jsonify({'ok': False, 'error': data['error']})
+        persist_signal(ticker, data)
+        act = data['signal']['action']
+        return jsonify({
+            'ok': True,
+            'signal': {
+                'action':     act,
+                'strength':   data['signal']['strength'],
+                'color':      SIGNAL_COLORS.get(act, '#78909C'),
+                'emoji':      SIGNAL_EMOJIS.get(act, '❓'),
+                'last_price': f"{data.get('last_price', 0):.2f}",
+                'pch':        round(data.get('price_change', 0), 2),
+                'rsi':        round(data['signal'].get('rsi', 0), 1),
+                'trend':      data['signal'].get('trend', ''),
+            }
+        })
+
+    if action == 'cron':
+        import cron_signals
+        result = cron_signals.run_cron()
+        return jsonify({
+            'ok': True,
+            'message': f"Scanned {result['scanned']}, Sent {result['alerts_sent']} alerts"
+        })
+
+    return jsonify({'ok': False, 'error': 'Unknown action'}), 400
+
 
 if __name__ == '__main__':
-    demo.launch(css=DARK_CSS, server_name="0.0.0.0")
+    init_db()
+    app.run(host='127.0.0.1', port=8080, debug=False)
