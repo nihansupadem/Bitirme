@@ -41,23 +41,80 @@ BIST30_STOCKS = {
     'YKBNK':'YKBNK - Yapi Kredi',
 }
 
-SP500_STOCKS = {
-    'AAPL':'AAPL - Apple',           'MSFT':'MSFT - Microsoft',
-    'GOOGL':'GOOGL - Alphabet',      'AMZN':'AMZN - Amazon',
-    'NVDA':'NVDA - NVIDIA',          'META':'META - Meta Platforms',
-    'TSLA':'TSLA - Tesla',           'BRK-B':'BRK-B - Berkshire Hathaway',
-    'V':'V - Visa',                  'JNJ':'JNJ - Johnson & Johnson',
-    'WMT':'WMT - Walmart',           'JPM':'JPM - JPMorgan Chase',
-    'PG':'PG - Procter & Gamble',    'MA':'MA - Mastercard',
-    'UNH':'UNH - UnitedHealth',      'HD':'HD - Home Depot',
-    'CVX':'CVX - Chevron',           'LLY':'LLY - Eli Lilly',
-    'ABBV':'ABBV - AbbVie',          'MRK':'MRK - Merck',
-    'BAC':'BAC - Bank of America',   'AVGO':'AVGO - Broadcom',
-    'PEP':'PEP - PepsiCo',           'KO':'KO - Coca-Cola',
-    'COST':'COST - Costco',          'MCD':'MCD - McDonald\'s',
-    'TMO':'TMO - Thermo Fisher',     'CSCO':'CSCO - Cisco',
-    'ACN':'ACN - Accenture',         'ABT':'ABT - Abbott Labs',
+SP500_SECTORS = {
+    '💻 Technology': {
+        'AAPL':'Apple',        'MSFT':'Microsoft',     'NVDA':'NVIDIA',
+        'AVGO':'Broadcom',     'ORCL':'Oracle',         'CSCO':'Cisco',
+        'ACN':'Accenture',     'ADBE':'Adobe',          'CRM':'Salesforce',
+        'AMD':'AMD',           'INTC':'Intel',          'QCOM':'Qualcomm',
+        'IBM':'IBM',           'NOW':'ServiceNow',      'INTU':'Intuit',
+        'TXN':'Texas Instruments', 'MU':'Micron Technology',
+        'AMAT':'Applied Materials',
+    },
+    '📡 Communication': {
+        'GOOGL':'Alphabet',    'META':'Meta Platforms', 'NFLX':'Netflix',
+        'DIS':'Walt Disney',   'CMCSA':'Comcast',       'T':'AT&T',
+        'VZ':'Verizon',        'TMUS':'T-Mobile',
+    },
+    '🛒 Consumer Discretionary': {
+        'AMZN':'Amazon',       'TSLA':'Tesla',          'HD':'Home Depot',
+        'MCD':'McDonald\'s',   'NKE':'Nike',            'SBUX':'Starbucks',
+        'LOW':'Lowe\'s',       'TJX':'TJX Companies',  'BKNG':'Booking Holdings',
+        'GM':'General Motors', 'F':'Ford Motor',
+    },
+    '🛍️ Consumer Staples': {
+        'WMT':'Walmart',       'PG':'Procter & Gamble', 'KO':'Coca-Cola',
+        'PEP':'PepsiCo',       'COST':'Costco',         'MO':'Altria',
+        'CL':'Colgate-Palmolive','KHC':'Kraft Heinz',   'GIS':'General Mills',
+        'K':'Kellanova',
+    },
+    '🏥 Healthcare': {
+        'UNH':'UnitedHealth',  'LLY':'Eli Lilly',       'JNJ':'Johnson & Johnson',
+        'ABBV':'AbbVie',       'MRK':'Merck',           'TMO':'Thermo Fisher',
+        'ABT':'Abbott Labs',   'DHR':'Danaher',         'BMY':'Bristol-Myers Squibb',
+        'AMGN':'Amgen',        'GILD':'Gilead Sciences','ISRG':'Intuitive Surgical',
+        'CVS':'CVS Health',    'CI':'Cigna',            'HCA':'HCA Healthcare',
+    },
+    '🏦 Financials': {
+        'BRK-B':'Berkshire Hathaway', 'JPM':'JPMorgan Chase', 'V':'Visa',
+        'MA':'Mastercard',     'BAC':'Bank of America', 'WFC':'Wells Fargo',
+        'GS':'Goldman Sachs',  'MS':'Morgan Stanley',   'AXP':'American Express',
+        'BLK':'BlackRock',     'C':'Citigroup',         'USB':'U.S. Bancorp',
+        'SPGI':'S&P Global',   'CME':'CME Group',       'ICE':'Intercontinental Exchange',
+    },
+    '⚡ Energy': {
+        'XOM':'ExxonMobil',    'CVX':'Chevron',         'COP':'ConocoPhillips',
+        'SLB':'SLB',           'EOG':'EOG Resources',   'MPC':'Marathon Petroleum',
+        'PSX':'Phillips 66',   'VLO':'Valero Energy',   'OXY':'Occidental Petroleum',
+    },
+    '🏗️ Industrials': {
+        'GE':'GE Aerospace',   'CAT':'Caterpillar',     'RTX':'RTX Corporation',
+        'HON':'Honeywell',     'UPS':'UPS',             'BA':'Boeing',
+        'LMT':'Lockheed Martin','DE':'Deere & Co',      'MMM':'3M',
+        'FDX':'FedEx',         'ETN':'Eaton',           'GD':'General Dynamics',
+    },
+    '🧱 Materials': {
+        'LIN':'Linde',         'APD':'Air Products',    'SHW':'Sherwin-Williams',
+        'ECL':'Ecolab',        'NEM':'Newmont',         'FCX':'Freeport-McMoRan',
+        'NUE':'Nucor',         'DOW':'Dow Inc',         'CF':'CF Industries',
+    },
+    '🏠 Real Estate': {
+        'PLD':'Prologis',      'AMT':'American Tower',  'EQIX':'Equinix',
+        'SPG':'Simon Property','WELL':'Welltower',      'DLR':'Digital Realty',
+        'PSA':'Public Storage','O':'Realty Income',     'SBAC':'SBA Communications',
+    },
+    '💡 Utilities': {
+        'NEE':'NextEra Energy', 'DUK':'Duke Energy',    'SO':'Southern Company',
+        'D':'Dominion Energy',  'AEP':'AEP',            'EXC':'Exelon',
+        'PCG':'PG&E',          'SRE':'Sempra',          'XEL':'Xcel Energy',
+    },
 }
+
+# Flat lookup dict for backward compatibility (routing, validation, etc.)
+SP500_STOCKS = {sym: f'{sym} - {name}'
+                for sector_stocks in SP500_SECTORS.values()
+                for sym, name in sector_stocks.items()}
+
 
 STOCKS = {**BIST30_STOCKS, **SP500_STOCKS}
 
@@ -411,6 +468,7 @@ def index():
         csrf=get_csrf(),
         bist30_stocks=BIST30_STOCKS,
         sp500_stocks=SP500_STOCKS,
+        sp500_sectors=SP500_SECTORS,
         ticker_bar=TICKER_BAR,
         stock_param=request.args.get('stock', ''),
     )
@@ -456,6 +514,7 @@ def dashboard():
         signals=signals_data,
         bist30_stocks=BIST30_STOCKS,
         sp500_stocks=SP500_STOCKS,
+        sp500_sectors=SP500_SECTORS,
         csrf=get_csrf(),
         alert_threshold=ALERT_THRESHOLD,
         max_tracked=MAX_TRACKED,

@@ -141,20 +141,22 @@ nav{background:#111E2D;border-bottom:2px solid #1E3A5F;padding:0 24px;display:fl
     <label>Add a stock to track:</label>
     <select id="add-select">
       <option value="">— choose a stock —</option>
-      <optgroup label="BIST30 (Turkey)">
+      <optgroup label="🇹🇷 BIST30 (Turkey)">
         {% for sym, name in bist30_stocks.items() %}
           <option value="{{ sym }}" {% if sym in tracked_tickers %}disabled style="color:#546E7A"{% endif %}>
             {{ name }}{% if sym in tracked_tickers %} (tracked){% endif %}
           </option>
         {% endfor %}
       </optgroup>
-      <optgroup label="S&P 500 (US)">
-        {% for sym, name in sp500_stocks.items() %}
+      {% for sector_label, sector_stocks in sp500_sectors.items() %}
+      <optgroup label="🇺🇸 {{ sector_label }}">
+        {% for sym, name in sector_stocks.items() %}
           <option value="{{ sym }}" {% if sym in tracked_tickers %}disabled style="color:#546E7A"{% endif %}>
-            {{ name }}{% if sym in tracked_tickers %} (tracked){% endif %}
+            {{ sym }} - {{ name }}{% if sym in tracked_tickers %} (tracked){% endif %}
           </option>
         {% endfor %}
       </optgroup>
+      {% endfor %}
     </select>
     <button class="btn btn-primary" onclick="addStock()">+ Add Stock</button>
     <span style="color:#546E7A;font-size:.82rem;margin-left:auto">

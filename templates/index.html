@@ -173,16 +173,18 @@ nav{position:sticky;top:0;z-index:100;display:flex;align-items:center;justify-co
     <div class="select-row">
       <select id="stockSelect">
         <option value="">-- Choose a stock --</option>
-        <optgroup label="BIST30 (Turkey)">
+        <optgroup label="🇹🇷 BIST30 (Turkey)">
           {% for sym, name in bist30_stocks.items() %}
           <option value="{{ sym }}">{{ name }}</option>
           {% endfor %}
         </optgroup>
-        <optgroup label="S&P 500 (US)">
-          {% for sym, name in sp500_stocks.items() %}
-          <option value="{{ sym }}">{{ name }}</option>
+        {% for sector_label, sector_stocks in sp500_sectors.items() %}
+        <optgroup label="🇺🇸 {{ sector_label }}">
+          {% for sym, name in sector_stocks.items() %}
+          <option value="{{ sym }}">{{ sym }} - {{ name }}</option>
           {% endfor %}
         </optgroup>
+        {% endfor %}
       </select>
       <button class="btn-analyze" id="analyzeBtn" onclick="runAnalysis()">
         <i class="fa-solid fa-bolt"></i> Analyze
