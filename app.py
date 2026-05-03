@@ -2,11 +2,12 @@
 """OpTrade — BIST30 Stock Forecasting (Flask web app)"""
 
 import contextlib, json, os, secrets, sqlite3, subprocess, sys
-from datetime import datetime
+from datetime import datetime, timedelta
 from functools import wraps
 
 from flask import (Flask, jsonify, redirect, render_template,
                    request, session, url_for)
+from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.security import check_password_hash, generate_password_hash
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -77,6 +78,17 @@ SIGNAL_EMOJIS = {
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', secrets.token_hex(32))
+
+# Trust the Hugging Face reverse proxy (HTTPS → HTTP)
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
+
+# Session cookie settings — required for cross-proxy environments
+app.config.update(
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE='Lax',
+    SESSION_COOKIE_SECURE=False,   # HF proxy handles HTTPS; Flask sees HTTP
+    PERMANENT_SESSION_LIFETIME=timedelta(days=7),
+)
 
 # ── Database ───────────────────────────────────────────────────────────────────
 
