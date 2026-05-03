@@ -47,8 +47,9 @@ def run_cron():
             last_price = float(data.get('last_price', 0))
             next_price = float(data.get('next_day_price', 0))
             summary = sig.get('summary', '')
+            currency_symbol = data.get('currency_symbol', '₺')
             
-            clog(f"  ✓ Signal: {action} ({strength}%) | Price: ₺{last_price}")
+            clog(f"  ✓ Signal: {action} ({strength}%) | Price: {currency_symbol}{last_price}")
             
             if strength >= app.ALERT_THRESHOLD:
                 clog(f"  🔔 Strength ≥ {app.ALERT_THRESHOLD}% — checking for users to alert")
@@ -72,7 +73,8 @@ def run_cron():
                         strength=strength,
                         price=last_price,
                         next_price=next_price,
-                        summary=summary
+                        summary=summary,
+                        currency_symbol=currency_symbol
                     )
                     
                     if result is True:

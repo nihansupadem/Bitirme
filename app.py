@@ -20,7 +20,7 @@ MAX_TRACKED      = 20
 RATE_LIMIT_MAX   = 5
 RATE_LIMIT_MIN   = 15
 
-STOCKS = {
+BIST30_STOCKS = {
     'AKBNK':'AKBNK - Akbank',        'ASELS':'ASELS - Aselsan',
     'BIMAS':'BIMAS - BIM',           'DOHOL':'DOHOL - Dogan Holding',
     'EKGYO':'EKGYO - Emlak Konut',   'ENKAI':'ENKAI - Enka Insaat',
@@ -40,11 +40,31 @@ STOCKS = {
     'YKBNK':'YKBNK - Yapi Kredi',
 }
 
+SP500_STOCKS = {
+    'AAPL':'AAPL - Apple',           'MSFT':'MSFT - Microsoft',
+    'GOOGL':'GOOGL - Alphabet',      'AMZN':'AMZN - Amazon',
+    'NVDA':'NVDA - NVIDIA',          'META':'META - Meta Platforms',
+    'TSLA':'TSLA - Tesla',           'BRK-B':'BRK-B - Berkshire Hathaway',
+    'V':'V - Visa',                  'JNJ':'JNJ - Johnson & Johnson',
+    'WMT':'WMT - Walmart',           'JPM':'JPM - JPMorgan Chase',
+    'PG':'PG - Procter & Gamble',    'MA':'MA - Mastercard',
+    'UNH':'UNH - UnitedHealth',      'HD':'HD - Home Depot',
+    'CVX':'CVX - Chevron',           'LLY':'LLY - Eli Lilly',
+    'ABBV':'ABBV - AbbVie',          'MRK':'MRK - Merck',
+    'BAC':'BAC - Bank of America',   'AVGO':'AVGO - Broadcom',
+    'PEP':'PEP - PepsiCo',           'KO':'KO - Coca-Cola',
+    'COST':'COST - Costco',          'MCD':'MCD - McDonald\'s',
+    'TMO':'TMO - Thermo Fisher',     'CSCO':'CSCO - Cisco',
+    'ACN':'ACN - Accenture',         'ABT':'ABT - Abbott Labs',
+}
+
+STOCKS = {**BIST30_STOCKS, **SP500_STOCKS}
+
 TICKER_BAR = [
-    ('YKBNK','+1.2%','up'),  ('GARAN','+0.8%','up'),  ('THYAO','-0.5%','down'),
-    ('FROTO','+2.1%','up'),  ('TUPRS','+0.3%','up'),  ('TCELL','-0.2%','down'),
-    ('AKBNK','+1.5%','up'),  ('PETKM','+0.6%','up'),  ('BIMAS','-0.9%','down'),
-    ('EREGL','+1.8%','up'),  ('KCHOL','+0.4%','up'),  ('SAHOL','-0.1%','down'),
+    ('AAPL','+1.2%','up'),   ('THYAO','-0.5%','down'),('MSFT','+0.8%','up'),
+    ('GARAN','+0.4%','up'),  ('NVDA','+2.1%','up'),   ('AKBNK','+1.5%','up'),
+    ('AMZN','-0.2%','down'), ('FROTO','+1.8%','up'),  ('TSLA','-0.9%','down'),
+    ('EREGL','+0.3%','up'),  ('GOOGL','+0.6%','up'),  ('SAHOL','-0.1%','down'),
 ]
 
 SIGNAL_COLORS = {
@@ -327,15 +347,26 @@ def check_csrf(token):
 
 def run_analysis(symbol):
     try:
+        if symbol in BIST30_STOCKS:
+            script_path = SCRIPT
+            arg = symbol + '.IS'
+        else:
+            script_path = os.path.join(BASE_DIR, 'backend', 'train_model_sp500.py')
+            arg = symbol
+
         result = subprocess.run(
-            [PYTHON, SCRIPT, symbol + '.IS'],
+            [PYTHON, script_path, arg],
             capture_output=True, text=True, timeout=360, cwd=BASE_DIR
         )
         output = result.stdout
         j0, j1 = output.find('{'), output.rfind('}')
         if j0 == -1 or j1 == -1:
             return {'error': f'No output from model. stderr: {result.stderr[-400:]}'}
-        return json.loads(output[j0:j1 + 1])
+        
+        data = json.loads(output[j0:j1 + 1])
+        data['currency'] = 'TRY' if symbol in BIST30_STOCKS else 'USD'
+        data['currency_symbol'] = '₺' if symbol in BIST30_STOCKS else '$'
+        return data
     except subprocess.TimeoutExpired:
         return {'error': 'Analysis timed out (>6 min). Please try again.'}
     except json.JSONDecodeError as e:
@@ -366,7 +397,8 @@ def index():
         logged_in=('user_id' in session),
         user_email=session.get('email', ''),
         csrf=get_csrf(),
-        stocks=STOCKS,
+        bist30_stocks=BIST30_STOCKS,
+        sp500_stocks=SP500_STOCKS,
         ticker_bar=TICKER_BAR,
         stock_param=request.args.get('stock', ''),
     )
@@ -385,12 +417,22 @@ def auth():
 def dashboard():
     uid     = session['user_id']
     tracked = db_get_tracked(uid)
+    
+    signals_data = {}
+    for t in tracked:
+        sig = db_get_signal(t['ticker'])
+        if sig:
+            sig['currency'] = 'TRY' if t['ticker'] in BIST30_STOCKS else 'USD'
+            sig['currency_symbol'] = '₺' if t['ticker'] in BIST30_STOCKS else '$'
+        signals_data[t['ticker']] = sig
+
     return render_template('dashboard.html',
         user=db_find_user_by_id(uid),
         tracked=tracked,
         tracked_tickers={t['ticker'] for t in tracked},
-        signals={t['ticker']: db_get_signal(t['ticker']) for t in tracked},
-        stocks=list(STOCKS.keys()),
+        signals=signals_data,
+        bist30_stocks=BIST30_STOCKS,
+        sp500_stocks=SP500_STOCKS,
         csrf=get_csrf(),
         alert_threshold=ALERT_THRESHOLD,
         max_tracked=MAX_TRACKED,
@@ -494,6 +536,8 @@ def api_tracked():
                 'pch':        round(data.get('price_change', 0), 2),
                 'rsi':        round(data['signal'].get('rsi', 0), 1),
                 'trend':      data['signal'].get('trend', ''),
+                'currency':   data.get('currency', 'TRY'),
+                'currency_symbol': data.get('currency_symbol', '₺'),
             }
         })
 

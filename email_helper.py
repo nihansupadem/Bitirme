@@ -50,7 +50,7 @@ def send_email(to_email, to_name, subject, html_body):
         print(f"Failed to send email to {to_email}: {e}")
         return str(e)
 
-def email_signal_alert(to_email, to_name, ticker, signal_type, strength, price, next_price, summary):
+def email_signal_alert(to_email, to_name, ticker, signal_type, strength, price, next_price, summary, currency_symbol='₺'):
     color = '#66BB6A' if signal_type in ['STRONG BUY', 'BUY'] else '#EF5350'
     emoji = '📈' if signal_type in ['STRONG BUY', 'BUY'] else '📉'
     
@@ -92,14 +92,14 @@ def email_signal_alert(to_email, to_name, ticker, signal_type, strength, price, 
     <div class="wrap">
       <div class="hdr">
         <h1>{emoji} OpTrade Signal Alert</h1>
-        <p>AI-powered BIST30 signal for {ticker}</p>
+        <p>AI-powered signal for {ticker}</p>
       </div>
       <div class="body">
         <div class="signal-badge">{signal_type}</div>
         <div class="row"><span class="lbl">Stock</span><span class="val">{ticker}</span></div>
         <div class="row"><span class="lbl">Signal Strength</span><span class="val" style="color:{color};">{strength}%</span></div>
-        <div class="row"><span class="lbl">Current Price</span><span class="val">₺{price}</span></div>
-        <div class="row"><span class="lbl">Forecast (next day)</span><span class="val">₺{next_price} <small style="color:{color};">({pch_sign}{pch}%)</small></span></div>
+        <div class="row"><span class="lbl">Current Price</span><span class="val">{currency_symbol}{price}</span></div>
+        <div class="row"><span class="lbl">Forecast (next day)</span><span class="val">{currency_symbol}{next_price} <small style="color:{color};">({pch_sign}{pch}%)</small></span></div>
         <div class="summary">{summary}</div>
         <a class="btn" href="{APP_URL}">View Full Analysis</a>
         <p style="color:#546E7A;font-size:.8rem;margin-top:20px;">

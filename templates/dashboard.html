@@ -141,11 +141,20 @@ nav{background:#111E2D;border-bottom:2px solid #1E3A5F;padding:0 24px;display:fl
     <label>Add a stock to track:</label>
     <select id="add-select">
       <option value="">— choose a stock —</option>
-      {% for s in stocks %}
-        <option value="{{ s }}" {% if s in tracked_tickers %}disabled style="color:#546E7A"{% endif %}>
-          {{ s }}{% if s in tracked_tickers %} (tracked){% endif %}
-        </option>
-      {% endfor %}
+      <optgroup label="BIST30 (Turkey)">
+        {% for s in bist30_stocks %}
+          <option value="{{ s }}" {% if s in tracked_tickers %}disabled style="color:#546E7A"{% endif %}>
+            {{ s }}{% if s in tracked_tickers %} (tracked){% endif %}
+          </option>
+        {% endfor %}
+      </optgroup>
+      <optgroup label="S&P 500 (US)">
+        {% for s in sp500_stocks %}
+          <option value="{{ s }}" {% if s in tracked_tickers %}disabled style="color:#546E7A"{% endif %}>
+            {{ s }}{% if s in tracked_tickers %} (tracked){% endif %}
+          </option>
+        {% endfor %}
+      </optgroup>
     </select>
     <button class="btn btn-primary" onclick="addStock()">+ Add Stock</button>
     <span style="color:#546E7A;font-size:.82rem;margin-left:auto">
@@ -200,7 +209,7 @@ nav{background:#111E2D;border-bottom:2px solid #1E3A5F;padding:0 24px;display:fl
             {% if sig.last_price %}
             <div class="mini-m">
               <div class="mm-l">Price</div>
-              <div class="mm-v">₺{{ sig.last_price | numfmt(2) }}</div>
+              <div class="mm-v">{{ sig.currency_symbol }}{{ sig.last_price | numfmt(2) }}</div>
             </div>
             {% endif %}
             {% if sig.price_change is not none %}
@@ -303,6 +312,7 @@ async function refreshSignal(ticker) {
         if (data.ok && data.signal) {
             const s = data.signal;
             const sc = s.color;
+            const symStr = s.currency_symbol || '₺';
             const stale = s.strength >= {{ alert_threshold }};
             sec.innerHTML = `
               <div class="sig-badge" style="background:${sc}22;border:1.5px solid ${sc};color:${sc}">
@@ -315,7 +325,7 @@ async function refreshSignal(ticker) {
                 <span class="str-pct" style="color:${sc}">${s.strength}%</span>
               </div>
               <div class="mini-metrics">
-                <div class="mini-m"><div class="mm-l">Price</div><div class="mm-v">₺${s.last_price}</div></div>
+                <div class="mini-m"><div class="mm-l">Price</div><div class="mm-v">${symStr}${s.last_price}</div></div>
                 <div class="mini-m"><div class="mm-l">Forecast</div>
                   <div class="mm-v" style="color:${s.pch>=0?'#66BB6A':'#EF5350'}">
                     ${s.pch>=0?'+':''}${s.pch}%</div></div>
