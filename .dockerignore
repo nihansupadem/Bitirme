@@ -2,13 +2,10 @@
 .gitignore
 venv/
 .venv/
+bist/
 __pycache__/
 *.pyc
 *.pyo
-app.py
-DEPLOY.md
-start.sh
-backend/cache/
-backend/*.db
-backend/frontend/cache/
+cache/
+*.db
 node_modules/
