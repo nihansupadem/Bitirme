@@ -1,63 +1,37 @@
-FROM ubuntu:22.04
+FROM python:3.10-slim
 
-ENV DEBIAN_FRONTEND=noninteractive
-ENV APACHE_RUN_USER=www-data
-ENV APACHE_RUN_GROUP=www-data
-ENV APACHE_LOG_DIR=/var/log/apache2
-ENV APACHE_PID_FILE=/var/run/apache2.pid
-ENV APACHE_RUN_DIR=/var/run/apache2
-ENV APACHE_LOCK_DIR=/var/lock/apache2
+# Set environment variables
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    DEBIAN_FRONTEND=noninteractive
 
-# ── System packages ────────────────────────────────────────────────────────────
+# Install system dependencies
 RUN apt-get update && apt-get install -y \
-    apache2 \
-    php8.1 \
-    php8.1-sqlite3 \
-    php8.1-curl \
-    php8.1-mbstring \
-    libapache2-mod-php8.1 \
-    python3 \
-    python3-pip \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# ── Python ML packages ─────────────────────────────────────────────────────────
-RUN pip3 install --no-cache-dir \
-    numpy \
-    pandas \
-    scikit-learn \
-    "tensorflow-cpu<2.16" \
-    yfinance \
-    requests \
-    hmmlearn \
-    matplotlib \
-    Pillow \
-    curl_cffi
+# Set working directory
+WORKDIR /app
 
-# ── Apache: listen on port 7860 (HuggingFace requirement) ─────────────────────
-RUN sed -i 's/Listen 80/Listen 7860/' /etc/apache2/ports.conf
+# Copy requirements and install
+COPY requirements.txt .
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
 
-# ── Apache virtualhost config ──────────────────────────────────────────────────
-COPY apache-hf.conf /etc/apache2/sites-available/000-default.conf
+# Copy all project files
+COPY . .
 
-# ── Enable modules ─────────────────────────────────────────────────────────────
-RUN a2enmod rewrite php8.1
+# Setup permissions for Hugging Face Spaces
+# Hugging Face Spaces runs containers with user ID 1000
+RUN useradd -m -u 1000 user && \
+    mkdir -p /app/cache && \
+    chown -R user:user /app && \
+    chmod -R 777 /app/cache
 
-# ── Copy project files ─────────────────────────────────────────────────────────
-# backend/ → /var/www/html/
-#   frontend/  → /var/www/html/frontend/   (PHP site)
-#   train_model.py → /var/www/html/train_model.py
-COPY backend/ /var/www/html/
+USER user
 
-# ── Writable directories ───────────────────────────────────────────────────────
-# cache/  — CSV price cache written by train_model.py (BASE_DIR/cache)
-# db      — directory for SQLite database (config.php → __DIR__/../../optrade.db)
-RUN mkdir -p /var/www/html/cache && \
-    chown -R www-data:www-data /var/www/html && \
-    chmod -R 755 /var/www/html && \
-    chmod 777 /var/www/html/cache && \
-    chmod 777 /var/www/html
-
+# Expose port 7860 (Hugging Face default)
 EXPOSE 7860
 
-CMD ["apache2ctl", "-D", "FOREGROUND"]
+# Start the Flask app using Gunicorn
+CMD ["gunicorn", "-b", "0.0.0.0:7860", "--timeout", "360", "app:app"]
