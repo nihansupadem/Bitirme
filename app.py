@@ -418,17 +418,28 @@ def dashboard():
     uid     = session['user_id']
     tracked = db_get_tracked(uid)
     
+    tracked_bist30 = []
+    tracked_sp500 = []
     signals_data = {}
     for t in tracked:
         sig = db_get_signal(t['ticker'])
-        if sig:
-            sig['currency'] = 'TRY' if t['ticker'] in BIST30_STOCKS else 'USD'
-            sig['currency_symbol'] = '₺' if t['ticker'] in BIST30_STOCKS else '$'
+        if t['ticker'] in BIST30_STOCKS:
+            tracked_bist30.append(t)
+            if sig:
+                sig['currency'] = 'TRY'
+                sig['currency_symbol'] = '₺'
+        else:
+            tracked_sp500.append(t)
+            if sig:
+                sig['currency'] = 'USD'
+                sig['currency_symbol'] = '$'
         signals_data[t['ticker']] = sig
 
     return render_template('dashboard.html',
         user=db_find_user_by_id(uid),
         tracked=tracked,
+        tracked_bist30=tracked_bist30,
+        tracked_sp500=tracked_sp500,
         tracked_tickers={t['ticker'] for t in tracked},
         signals=signals_data,
         bist30_stocks=BIST30_STOCKS,

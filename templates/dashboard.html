@@ -162,18 +162,8 @@ nav{background:#111E2D;border-bottom:2px solid #1E3A5F;padding:0 24px;display:fl
     </span>
   </div>
 
-  <!-- Stock grid -->
-  {% if not tracked %}
-  <div class="empty-state">
-    <div class="big">📭</div>
-    <h3>No stocks tracked yet</h3>
-    <p>Add a BIST30 stock above to start receiving AI signal alerts.</p>
-  </div>
-  {% else %}
-  <div class="grid" id="stock-grid">
-    {% for t in tracked %}
+  {% macro render_card(t, sig) %}
     {% set ticker = t.ticker %}
-    {% set sig = signals.get(ticker) %}
     <div class="stock-card" id="card-{{ ticker }}">
       <div class="card-top">
         <div style="display:flex;justify-content:space-between;align-items:flex-start">
@@ -256,8 +246,35 @@ nav{background:#111E2D;border-bottom:2px solid #1E3A5F;padding:0 24px;display:fl
         </button>
       </div>
     </div>
-    {% endfor %}
+  {% endmacro %}
+
+  <!-- Stock grids -->
+  {% if not tracked %}
+  <div class="empty-state">
+    <div class="big">📭</div>
+    <h3>No stocks tracked yet</h3>
+    <p>Add a BIST30 or S&P 500 stock above to start receiving AI signal alerts.</p>
   </div>
+  {% else %}
+    
+    {% if tracked_bist30 %}
+    <h2 style="margin:20px 0 16px;font-size:1.4rem;color:#ECEFF1;border-bottom:1px solid #1E3A5F;padding-bottom:8px">🇹🇷 BIST30 (Turkey)</h2>
+    <div class="grid" id="stock-grid-bist30" style="margin-bottom:32px">
+      {% for t in tracked_bist30 %}
+        {{ render_card(t, signals.get(t.ticker)) }}
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if tracked_sp500 %}
+    <h2 style="margin:20px 0 16px;font-size:1.4rem;color:#ECEFF1;border-bottom:1px solid #1E3A5F;padding-bottom:8px">🇺🇸 S&P 500 (US)</h2>
+    <div class="grid" id="stock-grid-sp500" style="margin-bottom:32px">
+      {% for t in tracked_sp500 %}
+        {{ render_card(t, signals.get(t.ticker)) }}
+      {% endfor %}
+    </div>
+    {% endif %}
+
   {% endif %}
 
 </div><!-- /container -->
