@@ -142,16 +142,16 @@ nav{background:#111E2D;border-bottom:2px solid #1E3A5F;padding:0 24px;display:fl
     <select id="add-select">
       <option value="">— choose a stock —</option>
       <optgroup label="BIST30 (Turkey)">
-        {% for s in bist30_stocks %}
-          <option value="{{ s }}" {% if s in tracked_tickers %}disabled style="color:#546E7A"{% endif %}>
-            {{ s }}{% if s in tracked_tickers %} (tracked){% endif %}
+        {% for sym, name in bist30_stocks.items() %}
+          <option value="{{ sym }}" {% if sym in tracked_tickers %}disabled style="color:#546E7A"{% endif %}>
+            {{ name }}{% if sym in tracked_tickers %} (tracked){% endif %}
           </option>
         {% endfor %}
       </optgroup>
       <optgroup label="S&P 500 (US)">
-        {% for s in sp500_stocks %}
-          <option value="{{ s }}" {% if s in tracked_tickers %}disabled style="color:#546E7A"{% endif %}>
-            {{ s }}{% if s in tracked_tickers %} (tracked){% endif %}
+        {% for sym, name in sp500_stocks.items() %}
+          <option value="{{ sym }}" {% if sym in tracked_tickers %}disabled style="color:#546E7A"{% endif %}>
+            {{ name }}{% if sym in tracked_tickers %} (tracked){% endif %}
           </option>
         {% endfor %}
       </optgroup>
@@ -162,7 +162,7 @@ nav{background:#111E2D;border-bottom:2px solid #1E3A5F;padding:0 24px;display:fl
     </span>
   </div>
 
-  {% macro render_card(t, sig) %}
+  {% macro render_card(t, sig, alert_threshold) %}
     {% set ticker = t.ticker %}
     <div class="stock-card" id="card-{{ ticker }}">
       <div class="card-top">
@@ -261,7 +261,7 @@ nav{background:#111E2D;border-bottom:2px solid #1E3A5F;padding:0 24px;display:fl
     <h2 style="margin:20px 0 16px;font-size:1.4rem;color:#ECEFF1;border-bottom:1px solid #1E3A5F;padding-bottom:8px">🇹🇷 BIST30 (Turkey)</h2>
     <div class="grid" id="stock-grid-bist30" style="margin-bottom:32px">
       {% for t in tracked_bist30 %}
-        {{ render_card(t, signals.get(t.ticker)) }}
+        {{ render_card(t, signals.get(t.ticker), alert_threshold) }}
       {% endfor %}
     </div>
     {% endif %}
@@ -270,7 +270,7 @@ nav{background:#111E2D;border-bottom:2px solid #1E3A5F;padding:0 24px;display:fl
     <h2 style="margin:20px 0 16px;font-size:1.4rem;color:#ECEFF1;border-bottom:1px solid #1E3A5F;padding-bottom:8px">🇺🇸 S&P 500 (US)</h2>
     <div class="grid" id="stock-grid-sp500" style="margin-bottom:32px">
       {% for t in tracked_sp500 %}
-        {{ render_card(t, signals.get(t.ticker)) }}
+        {{ render_card(t, signals.get(t.ticker), alert_threshold) }}
       {% endfor %}
     </div>
     {% endif %}

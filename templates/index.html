@@ -483,7 +483,10 @@ document.getElementById('stockSelect').addEventListener('keydown',e=>{if(e.key==
 
 // Pre-select stock from URL param
 const _sp = '{{ stock_param }}';
-if(_sp) document.getElementById('stockSelect').value = _sp;
+if(_sp) {
+    document.getElementById('stockSelect').value = _sp;
+    setTimeout(runAnalysis, 100);
+}
 </script>
 </body>
 </html>
