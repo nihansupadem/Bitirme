@@ -562,7 +562,8 @@ def api_tracked():
 
     return jsonify({'ok': False, 'error': 'Unknown action'}), 400
 
+# Initialize database tables unconditionally for Gunicorn
+init_db()
 
 if __name__ == '__main__':
-    init_db()
     app.run(host='127.0.0.1', port=8080, debug=False)
