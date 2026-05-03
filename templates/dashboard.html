@@ -295,7 +295,7 @@ async function apiTracked(params) {
     const fd = new FormData();
     fd.append('csrf', CSRF);
     for (const [k,v] of Object.entries(params)) fd.append(k,v);
-    const r = await fetch('/api/tracked', {method:'POST', body:fd});
+    const r = await fetch('/api/tracked', {method:'POST', body:fd, credentials:'include'});
     return r.json();
 }
 
@@ -386,7 +386,7 @@ async function triggerCron() {
     const fd = new FormData();
     fd.append('csrf', CSRF);
     fd.append('action', 'cron');
-    const r = await fetch('/api/tracked', {method:'POST', body:fd});
+    const r = await fetch('/api/tracked', {method:'POST', body:fd, credentials:'include'});
     const d = await r.json();
     if (d.ok) showToast(`Scan complete: ${d.message}`);
     else showToast(d.error || 'Scan failed', 'error');

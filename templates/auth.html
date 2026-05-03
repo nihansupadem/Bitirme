@@ -148,7 +148,7 @@ async function submitAuth(e, type) {
     btn.textContent = type === 'login' ? 'Signing in…' : 'Creating account…';
 
     try {
-        const res  = await fetch('/api/auth', { method:'POST', body: new FormData(form) });
+        const res  = await fetch('/api/auth', { method:'POST', body: new FormData(form), credentials:'include' });
         const data = await res.json();
         if (data.ok) {
             okEl.textContent = type === 'login' ? 'Signed in! Redirecting…' : 'Account created! Redirecting…';
